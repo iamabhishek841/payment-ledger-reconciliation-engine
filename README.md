@@ -83,20 +83,22 @@ Accounts used by the webhook handler:
 ### Dashboard design system
 
 `dashboard.py` follows a concrete token system rather than default
-Streamlit styling, defined at the top of the file:
+Streamlit styling, defined at the top of the file. It's a **light
+theme built on Stripe's own brand palette** — no dark backgrounds
+anywhere:
 
 | Token | Hex | Use |
 |---|---|---|
-| `bg-primary` | `#0B0E14` | page background |
-| `bg-surface` | `#131826` | cards/panels |
-| `bg-surface-alt` | `#171D2E` | sidebar |
-| `border-subtle` | `#232A3D` | card borders, dividers |
-| `text-primary` | `#E8EBF2` | headings, key numbers |
-| `text-secondary` | `#9AA3B8` | body/captions |
-| `accent-emerald` | `#10B981` | matched / credit / positive |
-| `accent-amber` | `#F59E0B` | flagged mismatch / warning |
-| `accent-indigo` | `#6366F1` | primary interactive accent |
-| `accent-rose` | `#F43F5E` | debit / negative |
+| `bg-page` | `#F6F9FC` | page background (Stripe's signature very-light blue-gray) |
+| `bg-card` | `#FFFFFF` | cards/panels |
+| `bg-card-alt` | `#FAFBFC` | sidebar |
+| `border-subtle` | `#E3E8EE` | card borders, dividers |
+| `text-primary` | `#0A2540` | headings, key numbers (Stripe's dark navy — never pure black) |
+| `text-secondary` | `#425466` | body/captions |
+| `accent-emerald` | `#24B47E` | matched / credit / positive |
+| `accent-amber` | `#FFA726` | flagged mismatch / warning |
+| `accent-primary` | `#635BFF` | primary interactive accent (Stripe purple) |
+| `accent-rose` | `#DF1B41` | debit / negative (Stripe's own red) |
 
 Typography: **Space Grotesk** for headings/section headers, **Inter**
 for body text, and — the signature detail — **JetBrains Mono** with
@@ -104,9 +106,11 @@ for body text, and — the signature detail — **JetBrains Mono** with
 page (amounts, counts, percentages, IDs, timestamps), so financial
 figures always align in a fixed-width grid the way real ledger tools
 do. The Ledger Entries table renders as a ledger-paper-style HTML table
-with alternating row tint and a 2px left border accent per row —
-emerald for credit, rose for debit — so the nature of each entry is
-visible without reading the text.
+with alternating row tint (white / light blue-gray) and a 2px left
+border accent per row — emerald for credit, rose for debit — so the
+nature of each entry is visible without reading the text. Streamlit's
+native header/menu/footer chrome is hidden via CSS for a polished,
+non-generic look.
 
 ## Local setup
 
