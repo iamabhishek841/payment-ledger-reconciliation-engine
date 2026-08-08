@@ -9,6 +9,16 @@ This is a demonstration of transactional-correctness engineering —
 idempotency, concurrency-safe writes, and event-driven consistency — the
 same class of problem payment platforms solve internally.
 
+**Live demo:** [payment-ledger-reconciliation-engine.streamlit.app](https://payment-ledger-reconciliation-engine.streamlit.app/) (runs in `demo` mode — a real exported Stripe test-mode snapshot, no live API calls, no secrets required to view)
+
+![Dashboard screenshot](docs/screenshots/local.png)
+*Running locally, `demo` mode: KPI cards, reconciliation charts, and the
+ledger-style entries table with credit/debit accent borders.*
+
+![Deployed on Streamlit Cloud](docs/screenshots/deployed.png)
+*The same app deployed on Streamlit Cloud — identical rendering, confirming
+the app is self-contained (see "Deploying to Streamlit Cloud" below).*
+
 ## Core invariants
 
 1. **Double-entry**: every ledger transaction is a set of legs whose debits
