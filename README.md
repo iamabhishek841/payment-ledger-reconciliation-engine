@@ -124,7 +124,8 @@ variable:
 | Mode | Default? | Data source | Needs a Stripe key? |
 |------|----------|-------------|----------------------|
 | `demo` | yes (used when `DASHBOARD_MODE` is unset) | static JSON snapshot in `demo_data/` | no — zero live Stripe API calls |
-| `live` | no | the real local SQLite ledger + `reconciliation_report.json` | only if you use the reconciliation refresh; resolved via `src/secrets_helper.py` |
+| `live` (local DB present) | no | the real local SQLite ledger + `reconciliation_report.json` | only if you use the reconciliation refresh; resolved via `src/secrets_helper.py` |
+| `live` (no local DB found) | no | falls back automatically to a **read-only Live Stripe Activity** view, listing recent PaymentIntents straight from the Stripe API | yes |
 
 ```bash
 # Demo mode (default) -- safe to run/deploy with no secrets at all
@@ -136,6 +137,46 @@ DASHBOARD_MODE=live streamlit run src/dashboard.py
 
 A small badge next to the title (and at the top of the sidebar) always shows
 which mode is active — "● Demo data" or "● Live" — so it's never ambiguous.
+
+#### Why live mode needs a fallback
+
+Streamlit Cloud only hosts `src/dashboard.py` — it can't run the FastAPI
+webhook receiver (`src/api.py`) alongside it, and it has no persistent
+filesystem, so the local SQLite ledger (which only ever gets populated by
+locally-received webhooks) will never exist there. A genuine "Stripe vs
+local ledger" reconciliation can't run authentically in that environment,
+so `live` mode detects whether `LEDGER_DB_PATH` actually exists on disk:
+
+- If it exists (normal local development), live mode behaves exactly as
+  before — full reconciliation, matched-vs-mismatched chart, ledger
+  entries table, mismatch drill-down.
+- If it doesn't exist (Streamlit Cloud, or a fresh checkout with no local
+  activity yet), the dashboard automatically falls back to **"Live Stripe
+  Activity (read-only)"**: real recent PaymentIntents pulled directly via
+  `stripe.PaymentIntent.list`, shown in the same card/table styling as the
+  rest of the app, with no matched/mismatched framing — there's nothing
+  local to compare against, so the UI doesn't pretend otherwise.
+
+### Deploying to Streamlit Cloud
+
+1. Push this repo to GitHub (already done if you're reading this from the
+   deployed app's linked repo).
+2. Go to [share.streamlit.io](https://share.streamlit.io) and connect the
+   repo.
+3. Set **Main file path** to `src/dashboard.py`.
+4. In the app's **Settings → Secrets**, paste:
+   ```toml
+   STRIPE_SECRET_KEY = "sk_test_your_real_test_mode_key"
+   ```
+   (Only needed for `live` mode. `demo` mode needs no secrets at all.)
+5. Set the **`DASHBOARD_MODE`** environment variable/secret if you want the
+   deployed app to default to something other than `demo`. **`demo` is the
+   recommended public default** — it's safe to share with no credentials
+   exposed and tells a complete, self-contained story. Leave `live`
+   available as a toggle (e.g. via a secrets-configurable env var) for
+   anyone who wants to see real Stripe test-mode activity; on Streamlit
+   Cloud it will automatically render as the read-only Live Stripe
+   Activity view described above, since there's no local ledger DB there.
 
 #### Regenerating the demo snapshot
 
