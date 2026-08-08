@@ -1,7 +1,24 @@
 {
-  "generated_at": "2026-08-08T18:55:33.634626+00:00",
-  "total_checked": 4,
-  "matched_count": 4,
-  "mismatch_count": 0,
-  "mismatches": []
+  "generated_at": "2026-08-08T19:31:20.447509+00:00",
+  "total_checked": 32,
+  "matched_count": 30,
+  "mismatch_count": 2,
+  "mismatches": [
+    {
+      "payment_intent_id": "pi_3U2FxLCciUvZejUj0zi7qMI2",
+      "mismatch_type": "missing_local_entry",
+      "stripe_amount": 2000,
+      "stripe_status": "succeeded",
+      "local_amount": null,
+      "detail": "Stripe reports this PaymentIntent as succeeded but no ledger transaction exists for it (webhook may have been missed)."
+    },
+    {
+      "payment_intent_id": "pi_3U2FxJCciUvZejUj0tqF21ny",
+      "mismatch_type": "missing_local_entry",
+      "stripe_amount": 2000,
+      "stripe_status": "succeeded",
+      "local_amount": null,
+      "detail": "Stripe reports this PaymentIntent as succeeded but no ledger transaction exists for it (webhook may have been missed)."
+    }
+  ]
 }
