@@ -99,8 +99,16 @@ def connect(db_path: str) -> sqlite3.Connection:
     both proceeding partway through a multi-statement transaction and
     then colliding -- one of them will block/retry at BEGIN IMMEDIATE
     time instead of failing midway with SQLITE_BUSY.
+
+    check_same_thread=False allows this single connection to be reused
+    across the worker threads FastAPI/Starlette use to run sync request
+    handlers. This is safe here because every call to the connection is
+    a single self-contained execute()/fetchone() (or a single BEGIN
+    IMMEDIATE ... COMMIT block), never a cursor shared across threads,
+    and SQLite itself serializes conflicting writers via the write lock
+    BEGIN IMMEDIATE takes.
     """
-    conn = sqlite3.connect(db_path, isolation_level=None, timeout=30.0)
+    conn = sqlite3.connect(db_path, isolation_level=None, timeout=30.0, check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.row_factory = sqlite3.Row
