@@ -17,12 +17,13 @@ Supports two modes via the DASHBOARD_MODE environment variable:
     needs is resolved via src.secrets_helper.get_secret (local .env
     first, then Streamlit Cloud's st.secrets).
 
-Visual design follows a concrete financial-ledger token system (colors,
-type scale, spacing) rather than generic dark-dashboard styling -- see
-the design tokens block below. The signature detail is tabular
-monospace numerals (JetBrains Mono, font-variant-numeric: tabular-nums)
-applied to every numeric value on the page: amounts, counts,
-percentages, IDs, and timestamps.
+Visual design is a light theme built on Stripe's own brand palette --
+signature #F6F9FC page background, white cards, dark-navy text (never
+pure black) -- rather than generic light-dashboard styling. See the
+design tokens block below. The signature detail is tabular monospace
+numerals (JetBrains Mono, font-variant-numeric: tabular-nums) applied to
+every numeric value on the page: amounts, counts, percentages, IDs, and
+timestamps.
 """
 
 from __future__ import annotations
@@ -54,24 +55,26 @@ DEMO_LEDGER_PATH = os.environ.get("DEMO_LEDGER_PATH", "demo_data/sample_ledger.j
 DEMO_REPORT_PATH = os.environ.get("DEMO_REPORT_PATH", "demo_data/sample_reconciliation.json")
 
 # ---------------------------------------------------------------------------
-# Design tokens -- exact values, not approximations. See PR description /
-# project brief for the source of truth this must match.
+# Design tokens -- Stripe's own brand palette, exact values, not
+# approximations. Full light-theme pivot: no dark backgrounds anywhere.
 # ---------------------------------------------------------------------------
-BG_PRIMARY = "#0B0E14"       # deep blue-black page background
-BG_SURFACE = "#131826"       # card/panel background
-BG_SURFACE_ALT = "#171D2E"   # sidebar background -- visibly distinct from BG_PRIMARY
-BG_SURFACE_EVEN_ROW = "#1A1F2D"  # ~3% lighter than BG_SURFACE, for alternating ledger rows
-BORDER_SUBTLE = "#232A3D"
-TEXT_PRIMARY = "#E8EBF2"
-TEXT_SECONDARY = "#9AA3B8"
-ACCENT_EMERALD = "#10B981"   # matched / credit / positive
-ACCENT_AMBER = "#F59E0B"     # flagged mismatch / warning
-ACCENT_INDIGO = "#6366F1"    # primary interactive accent
-ACCENT_ROSE = "#F43F5E"      # debit / negative, used sparingly
+BG_PAGE = "#F6F9FC"          # Stripe's signature very-light blue-gray page background
+BG_CARD = "#FFFFFF"          # white cards
+BG_CARD_ALT = "#FAFBFC"      # sidebar background -- subtly distinct from white
+BG_PAGE_ROW = BG_PAGE        # even ledger-table rows: the light blue-gray page tone
+BORDER_SUBTLE = "#E3E8EE"
+TEXT_PRIMARY = "#0A2540"     # Stripe's dark navy -- never pure black
+TEXT_SECONDARY = "#425466"
+ACCENT_EMERALD = "#24B47E"   # matched / credit / positive
+ACCENT_AMBER = "#FFA726"     # flagged mismatch / warning
+ACCENT_PRIMARY = "#635BFF"   # Stripe's signature purple/indigo
+ACCENT_ROSE = "#DF1B41"      # debit / negative -- Stripe's own red
+
+CARD_SHADOW = "0 1px 3px rgba(10,37,64,0.06), 0 1px 2px rgba(10,37,64,0.04)"
 
 # Categorical palette for the running-balance chart's per-account lines --
 # drawn strictly from the token set above, no improvised colors.
-ACCOUNT_LINE_PALETTE = [ACCENT_INDIGO, ACCENT_EMERALD, ACCENT_AMBER, ACCENT_ROSE]
+ACCOUNT_LINE_PALETTE = [ACCENT_PRIMARY, ACCENT_EMERALD, ACCENT_AMBER, ACCENT_ROSE]
 
 FONT_DISPLAY = "'Space Grotesk', sans-serif"
 FONT_BODY = "'Inter', sans-serif"
@@ -90,29 +93,49 @@ st.markdown(
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
     :root {{
-        --bg-primary: {BG_PRIMARY};
-        --bg-surface: {BG_SURFACE};
-        --bg-surface-alt: {BG_SURFACE_ALT};
+        --bg-page: {BG_PAGE};
+        --bg-card: {BG_CARD};
+        --bg-card-alt: {BG_CARD_ALT};
         --border-subtle: {BORDER_SUBTLE};
         --text-primary: {TEXT_PRIMARY};
         --text-secondary: {TEXT_SECONDARY};
         --accent-emerald: {ACCENT_EMERALD};
         --accent-amber: {ACCENT_AMBER};
-        --accent-indigo: {ACCENT_INDIGO};
+        --accent-primary: {ACCENT_PRIMARY};
         --accent-rose: {ACCENT_ROSE};
     }}
 
+    /* Streamlit's own platform chrome (Deploy button, hamburger menu,
+    footer) isn't app-controlled but can be hidden for a polished look. */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+
+    /* visibility:hidden keeps the header's layout space reserved, and
+    Streamlit's block-container has top padding sized to clear that
+    (now-invisible) header, which left a large blank gap above the page
+    title. Collapsing that padding to match the sidebar's own top
+    padding (24px) re-aligns the title with the sidebar content on the
+    same baseline -- verified via getBoundingClientRect() in a live
+    browser session, not guessed. */
+    [data-testid="stAppViewContainer"] .main .block-container {{
+        padding-top: 24px;
+    }}
+    section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {{
+        padding-top: 8px;
+    }}
+
     .stApp {{
-        background-color: var(--bg-primary);
+        background-color: var(--bg-page);
         color: var(--text-primary);
         font-family: {FONT_BODY};
         font-size: 14px;
         font-weight: 400;
     }}
 
-    /* ---- Sidebar: bg-surface-alt, visibly distinct from bg-primary ---- */
+    /* ---- Sidebar: bg-card-alt, visibly distinct from bg-page ---- */
     section[data-testid="stSidebar"] {{
-        background-color: var(--bg-surface-alt);
+        background-color: var(--bg-card-alt);
         border-right: 1px solid var(--border-subtle);
     }}
     section[data-testid="stSidebar"] > div {{
@@ -128,7 +151,7 @@ st.markdown(
         font-family: {FONT_BODY};
     }}
     section[data-testid="stSidebar"] input {{
-        background-color: var(--bg-surface) !important;
+        background-color: var(--bg-card) !important;
         border: 1px solid var(--border-subtle) !important;
         color: var(--text-primary) !important;
         font-family: {FONT_MONO};
@@ -176,10 +199,10 @@ st.markdown(
 
     /* ---- KPI cards ---- */
     .kpi-card {{
-        background-color: var(--bg-surface);
+        background-color: var(--bg-card);
         border: 1px solid var(--border-subtle);
         border-radius: 10px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        box-shadow: {CARD_SHADOW};
         padding: 20px;
         margin-bottom: 8px;
     }}
@@ -239,9 +262,9 @@ st.markdown(
     /* ---- Mismatch pill ---- */
     .mismatch-pill {{
         display: inline-block;
-        background-color: rgba(245, 158, 11, 0.15);
+        background-color: rgba(255, 167, 38, 0.15);
         color: var(--accent-amber);
-        border: 1px solid rgba(245, 158, 11, 0.4);
+        border: 1px solid rgba(255, 167, 38, 0.4);
         border-radius: 999px;
         padding: 4px 12px;
         font-family: {FONT_BODY};
@@ -253,7 +276,7 @@ st.markdown(
     .ledger-table-wrap {{
         border: 1px solid var(--border-subtle);
         border-radius: 10px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        box-shadow: {CARD_SHADOW};
         overflow: auto;
         max-height: 420px;
     }}
@@ -266,7 +289,7 @@ st.markdown(
     table.ledger-table thead th {{
         position: sticky;
         top: 0;
-        background-color: var(--bg-surface-alt);
+        background-color: var(--bg-card-alt);
         color: var(--text-secondary);
         text-transform: uppercase;
         font-size: 11px;
@@ -304,15 +327,15 @@ st.markdown(
         letter-spacing: 0.03em;
     }}
     .entry-badge.credit {{
-        background-color: rgba(16, 185, 129, 0.15);
+        background-color: rgba(36, 180, 126, 0.15);
         color: var(--accent-emerald);
     }}
     .entry-badge.debit {{
-        background-color: rgba(244, 63, 94, 0.15);
+        background-color: rgba(223, 27, 65, 0.15);
         color: var(--accent-rose);
     }}
     .entry-badge.succeeded {{
-        background-color: rgba(16, 185, 129, 0.15);
+        background-color: rgba(36, 180, 126, 0.15);
         color: var(--accent-emerald);
     }}
     .entry-badge.other-status {{
@@ -322,10 +345,10 @@ st.markdown(
 
     /* ---- Record blocks (Flagged Mismatch Detail) ---- */
     .record-block {{
-        background-color: var(--bg-surface);
+        background-color: var(--bg-card);
         border: 1px solid var(--border-subtle);
         border-radius: 10px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        box-shadow: {CARD_SHADOW};
         padding: 16px;
     }}
     .record-row {{
@@ -363,12 +386,21 @@ def kpi_card(label: str, value: str, sub: str = "", value_class: str = "") -> st
     """
 
 
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    hex_color = hex_color.lstrip("#")
+    return int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+
+
 def mode_badge_html(size: str = "12px") -> str:
-    color = ACCENT_INDIGO if IS_DEMO_MODE else ACCENT_EMERALD
+    """Stripe's own badge convention: low-opacity tinted background,
+    solid-colored text and dot, never a saturated solid fill."""
+    color = ACCENT_PRIMARY if IS_DEMO_MODE else ACCENT_EMERALD
     label = "Demo data" if IS_DEMO_MODE else "Live"
+    r, g, b = _hex_to_rgb(color)
     return (
-        f'<span class="mode-badge" style="background-color:{color}22; color:{color}; '
-        f'border:1px solid {color}66; font-size:{size};">● {label}</span>'
+        f'<span class="mode-badge" style="background-color:rgba({r},{g},{b},0.1); '
+        f'color:{color}; border:1px solid rgba({r},{g},{b},0.3); font-size:{size};">'
+        f"● {label}</span>"
     )
 
 
@@ -444,7 +476,7 @@ def render_ledger_table(df: pd.DataFrame) -> None:
     for i, row in enumerate(df.itertuples(index=False)):
         is_credit = row.entry_type == "credit"
         border_color = ACCENT_EMERALD if is_credit else ACCENT_ROSE
-        row_bg = BG_SURFACE if i % 2 == 0 else BG_SURFACE_EVEN_ROW
+        row_bg = BG_CARD if i % 2 == 0 else BG_PAGE_ROW
         amount_color = ACCENT_EMERALD if is_credit else ACCENT_ROSE
         sign = "+" if is_credit else "−"
         created_str = row.created_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -484,7 +516,7 @@ def render_stripe_activity_table(df: pd.DataFrame) -> None:
     for i, row in enumerate(df.itertuples(index=False)):
         succeeded = row.status == "succeeded"
         border_color = ACCENT_EMERALD if succeeded else BORDER_SUBTLE
-        row_bg = BG_SURFACE if i % 2 == 0 else BG_SURFACE_EVEN_ROW
+        row_bg = BG_CARD if i % 2 == 0 else BG_PAGE_ROW
         created_str = row.created.strftime("%Y-%m-%d %H:%M:%S")
         id_short = html.escape(truncate_id(row.id))
         badge_class = "succeeded" if succeeded else "other-status"
@@ -778,8 +810,8 @@ with chart_cols[0]:
             ]
         )
         fig.update_layout(
-            paper_bgcolor=BG_SURFACE,
-            plot_bgcolor=BG_SURFACE,
+            paper_bgcolor=BG_CARD,
+            plot_bgcolor=BG_CARD,
             font=CHART_FONT,
             margin=dict(l=10, r=10, t=10, b=10),
             height=320,
@@ -821,8 +853,8 @@ with chart_cols[1]:
                 )
             )
         fig2.update_layout(
-            paper_bgcolor=BG_SURFACE,
-            plot_bgcolor=BG_SURFACE,
+            paper_bgcolor=BG_CARD,
+            plot_bgcolor=BG_CARD,
             font=CHART_FONT,
             margin=dict(l=10, r=10, t=10, b=10),
             height=320,
