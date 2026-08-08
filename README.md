@@ -80,6 +80,34 @@ Accounts used by the webhook handler:
 | `payment_failures` | memo   | debited on `payment_intent.payment_failed` (records the attempt; moves no real funds) |
 | `suspense`         | memo   | credited on `payment_intent.payment_failed` (memo counterpart) |
 
+### Dashboard design system
+
+`dashboard.py` follows a concrete token system rather than default
+Streamlit styling, defined at the top of the file:
+
+| Token | Hex | Use |
+|---|---|---|
+| `bg-primary` | `#0B0E14` | page background |
+| `bg-surface` | `#131826` | cards/panels |
+| `bg-surface-alt` | `#171D2E` | sidebar |
+| `border-subtle` | `#232A3D` | card borders, dividers |
+| `text-primary` | `#E8EBF2` | headings, key numbers |
+| `text-secondary` | `#9AA3B8` | body/captions |
+| `accent-emerald` | `#10B981` | matched / credit / positive |
+| `accent-amber` | `#F59E0B` | flagged mismatch / warning |
+| `accent-indigo` | `#6366F1` | primary interactive accent |
+| `accent-rose` | `#F43F5E` | debit / negative |
+
+Typography: **Space Grotesk** for headings/section headers, **Inter**
+for body text, and — the signature detail — **JetBrains Mono** with
+`font-variant-numeric: tabular-nums` for every numeric value on the
+page (amounts, counts, percentages, IDs, timestamps), so financial
+figures always align in a fixed-width grid the way real ledger tools
+do. The Ledger Entries table renders as a ledger-paper-style HTML table
+with alternating row tint and a 2px left border accent per row —
+emerald for credit, rose for debit — so the nature of each entry is
+visible without reading the text.
+
 ## Local setup
 
 ```bash

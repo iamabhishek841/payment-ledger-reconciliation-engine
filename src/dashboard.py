@@ -17,13 +17,17 @@ Supports two modes via the DASHBOARD_MODE environment variable:
     needs is resolved via src.secrets_helper.get_secret (local .env
     first, then Streamlit Cloud's st.secrets).
 
-Designed to look like an internal fintech tool rather than a default
-Streamlit app: dark palette, card-style KPIs, Plotly charts, and a
-proper multi-column grid.
+Visual design follows a concrete financial-ledger token system (colors,
+type scale, spacing) rather than generic dark-dashboard styling -- see
+the design tokens block below. The signature detail is tabular
+monospace numerals (JetBrains Mono, font-variant-numeric: tabular-nums)
+applied to every numeric value on the page: amounts, counts,
+percentages, IDs, and timestamps.
 """
 
 from __future__ import annotations
 
+import html
 import json
 import os
 from pathlib import Path
@@ -49,19 +53,29 @@ REPORT_PATH = os.environ.get("RECONCILIATION_REPORT_PATH", "reconciliation_repor
 DEMO_LEDGER_PATH = os.environ.get("DEMO_LEDGER_PATH", "demo_data/sample_ledger.json")
 DEMO_REPORT_PATH = os.environ.get("DEMO_REPORT_PATH", "demo_data/sample_reconciliation.json")
 
-ACCENT = "#f0b429"  # amber -- the single accent color for alerts/mismatches
-BG = "#0b0f14"
-PANEL = "#131922"
-SIDEBAR_BG = "#0d1420"  # distinct tone from BG/PANEL so the sidebar reads as its own surface
-SIDEBAR_BORDER = "#232e3f"
-PANEL_BORDER = "#1f2733"
-TEXT = "#e6edf3"
-MUTED = "#9aa5b3"  # lightened from the original #8b96a5 for better readability on dark backgrounds
-SIDEBAR_TEXT = "#c3cbd6"
-POSITIVE = "#3fb950"
-NEGATIVE = "#f85149"
-LIVE_COLOR = "#3fb950"
-DEMO_COLOR = "#58a6ff"
+# ---------------------------------------------------------------------------
+# Design tokens -- exact values, not approximations. See PR description /
+# project brief for the source of truth this must match.
+# ---------------------------------------------------------------------------
+BG_PRIMARY = "#0B0E14"       # deep blue-black page background
+BG_SURFACE = "#131826"       # card/panel background
+BG_SURFACE_ALT = "#171D2E"   # sidebar background -- visibly distinct from BG_PRIMARY
+BG_SURFACE_EVEN_ROW = "#1A1F2D"  # ~3% lighter than BG_SURFACE, for alternating ledger rows
+BORDER_SUBTLE = "#232A3D"
+TEXT_PRIMARY = "#E8EBF2"
+TEXT_SECONDARY = "#9AA3B8"
+ACCENT_EMERALD = "#10B981"   # matched / credit / positive
+ACCENT_AMBER = "#F59E0B"     # flagged mismatch / warning
+ACCENT_INDIGO = "#6366F1"    # primary interactive accent
+ACCENT_ROSE = "#F43F5E"      # debit / negative, used sparingly
+
+# Categorical palette for the running-balance chart's per-account lines --
+# drawn strictly from the token set above, no improvised colors.
+ACCOUNT_LINE_PALETTE = [ACCENT_INDIGO, ACCENT_EMERALD, ACCENT_AMBER, ACCENT_ROSE]
+
+FONT_DISPLAY = "'Space Grotesk', sans-serif"
+FONT_BODY = "'Inter', sans-serif"
+FONT_MONO = "'JetBrains Mono', monospace"
 
 st.set_page_config(
     page_title="Payment Ledger Reconciliation Engine",
@@ -73,101 +87,265 @@ st.set_page_config(
 st.markdown(
     f"""
     <style>
-    .stApp {{
-        background-color: {BG};
-        color: {TEXT};
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+    :root {{
+        --bg-primary: {BG_PRIMARY};
+        --bg-surface: {BG_SURFACE};
+        --bg-surface-alt: {BG_SURFACE_ALT};
+        --border-subtle: {BORDER_SUBTLE};
+        --text-primary: {TEXT_PRIMARY};
+        --text-secondary: {TEXT_SECONDARY};
+        --accent-emerald: {ACCENT_EMERALD};
+        --accent-amber: {ACCENT_AMBER};
+        --accent-indigo: {ACCENT_INDIGO};
+        --accent-rose: {ACCENT_ROSE};
     }}
+
+    .stApp {{
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: {FONT_BODY};
+        font-size: 14px;
+        font-weight: 400;
+    }}
+
+    /* ---- Sidebar: bg-surface-alt, visibly distinct from bg-primary ---- */
     section[data-testid="stSidebar"] {{
-        background-color: {SIDEBAR_BG};
-        border-right: 1px solid {SIDEBAR_BORDER};
+        background-color: var(--bg-surface-alt);
+        border-right: 1px solid var(--border-subtle);
     }}
     section[data-testid="stSidebar"] > div {{
-        padding-top: 1.5rem;
-    }}
-    section[data-testid="stSidebar"] h3 {{
-        font-size: 0.95rem;
-        color: {TEXT};
-        margin-bottom: 2px;
+        padding: 24px 16px;
     }}
     section[data-testid="stSidebar"] .stCaption, section[data-testid="stSidebar"] small {{
-        color: {SIDEBAR_TEXT} !important;
+        color: var(--text-secondary) !important;
+        font-size: 12px !important;
     }}
     section[data-testid="stSidebar"] label {{
-        color: {SIDEBAR_TEXT} !important;
-        font-size: 0.82rem;
+        color: var(--text-secondary) !important;
+        font-size: 13px;
+        font-family: {FONT_BODY};
     }}
     section[data-testid="stSidebar"] input {{
-        background-color: {PANEL} !important;
-        border: 1px solid {SIDEBAR_BORDER} !important;
-        color: {TEXT} !important;
+        background-color: var(--bg-surface) !important;
+        border: 1px solid var(--border-subtle) !important;
+        color: var(--text-primary) !important;
+        font-family: {FONT_MONO};
+        font-variant-numeric: tabular-nums;
     }}
     .sidebar-divider {{
         border: none;
-        border-top: 1px solid {SIDEBAR_BORDER};
-        margin: 20px 0;
+        border-top: 1px solid var(--border-subtle);
+        margin: 24px 0;
     }}
     .sidebar-section-title {{
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 0.95rem;
+        font-family: {FONT_DISPLAY};
+        font-size: 15px;
         font-weight: 600;
-        color: {TEXT};
-        margin: 4px 0 10px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-primary);
+        margin: 0 0 12px 0;
     }}
+
+    /* ---- Headings / page title ---- */
     h1, h2, h3, h4 {{
-        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-family: {FONT_DISPLAY};
+        font-weight: 700;
         letter-spacing: -0.01em;
     }}
+    .page-title {{
+        font-family: {FONT_DISPLAY};
+        font-weight: 700;
+        font-size: 28px;
+        color: var(--text-primary);
+        margin: 0 0 8px 0;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }}
+    .page-subtitle {{
+        font-family: {FONT_BODY};
+        font-size: 14px;
+        color: var(--text-secondary);
+    }}
+
+    /* ---- KPI cards ---- */
     .kpi-card {{
-        background-color: {PANEL};
-        border: 1px solid {PANEL_BORDER};
-        border-radius: 12px;
-        padding: 20px 22px;
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        padding: 20px;
         margin-bottom: 8px;
     }}
     .kpi-label {{
-        color: {MUTED};
-        font-size: 0.8rem;
+        font-family: {FONT_BODY};
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 500;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        margin-bottom: 6px;
+        margin-bottom: 8px;
     }}
     .kpi-value {{
-        font-size: 2rem;
+        font-family: {FONT_MONO};
+        font-variant-numeric: tabular-nums;
+        font-size: 32px;
         font-weight: 700;
-        color: {TEXT};
+        color: var(--text-primary);
+        line-height: 1.2;
     }}
     .kpi-sub {{
-        font-size: 0.78rem;
-        color: {MUTED};
-        margin-top: 4px;
+        font-family: {FONT_BODY};
+        font-size: 12px;
+        color: var(--text-secondary);
+        margin-top: 8px;
     }}
-    .accent {{ color: {ACCENT}; }}
-    .positive {{ color: {POSITIVE}; }}
-    .negative {{ color: {NEGATIVE}; }}
+    .kpi-value.positive {{ color: var(--accent-emerald); }}
+    .kpi-value.accent {{ color: var(--accent-amber); }}
+    .mono-num {{
+        font-family: {FONT_MONO};
+        font-variant-numeric: tabular-nums;
+    }}
+
+    /* ---- Section headers ---- */
     .section-header {{
-        font-size: 1.05rem;
+        font-family: {FONT_DISPLAY};
+        font-size: 15px;
         font-weight: 600;
-        color: {TEXT};
-        margin: 6px 0 12px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-primary);
+        margin: 8px 0 16px 0;
         padding-bottom: 8px;
-        border-bottom: 1px solid {PANEL_BORDER};
+        border-bottom: 1px solid var(--border-subtle);
     }}
+
+    /* ---- Mode badge ---- */
+    .mode-badge {{
+        display: inline-block;
+        border-radius: 999px;
+        padding: 4px 12px;
+        font-family: {FONT_BODY};
+        font-weight: 600;
+        letter-spacing: 0.02em;
+    }}
+
+    /* ---- Mismatch pill ---- */
     .mismatch-pill {{
         display: inline-block;
-        background-color: rgba(240, 180, 41, 0.15);
-        color: {ACCENT};
-        border: 1px solid rgba(240, 180, 41, 0.4);
+        background-color: rgba(245, 158, 11, 0.15);
+        color: var(--accent-amber);
+        border: 1px solid rgba(245, 158, 11, 0.4);
         border-radius: 999px;
-        padding: 2px 10px;
-        font-size: 0.75rem;
+        padding: 4px 12px;
+        font-family: {FONT_BODY};
+        font-size: 12px;
         font-weight: 600;
     }}
-    div[data-testid="stDataFrame"] {{
-        border: 1px solid {PANEL_BORDER};
+
+    /* ---- Ledger-style HTML tables (Ledger Entries, Live Stripe Activity) ---- */
+    .ledger-table-wrap {{
+        border: 1px solid var(--border-subtle);
         border-radius: 10px;
-        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        overflow: auto;
+        max-height: 420px;
+    }}
+    table.ledger-table {{
+        width: 100%;
+        border-collapse: collapse;
+        font-family: {FONT_BODY};
+        font-size: 13px;
+    }}
+    table.ledger-table thead th {{
+        position: sticky;
+        top: 0;
+        background-color: var(--bg-surface-alt);
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-align: left;
+        padding: 12px;
+        border-bottom: 1px solid var(--border-subtle);
+        white-space: nowrap;
+    }}
+    table.ledger-table td {{
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border-subtle);
+        color: var(--text-primary);
+        white-space: nowrap;
+    }}
+    table.ledger-table td.mono {{
+        font-family: {FONT_MONO};
+        font-variant-numeric: tabular-nums;
+        color: var(--text-secondary);
+    }}
+    table.ledger-table td.amount {{
+        font-family: {FONT_MONO};
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+        font-weight: 500;
+    }}
+    .entry-badge {{
+        display: inline-block;
+        border-radius: 6px;
+        padding: 2px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }}
+    .entry-badge.credit {{
+        background-color: rgba(16, 185, 129, 0.15);
+        color: var(--accent-emerald);
+    }}
+    .entry-badge.debit {{
+        background-color: rgba(244, 63, 94, 0.15);
+        color: var(--accent-rose);
+    }}
+    .entry-badge.succeeded {{
+        background-color: rgba(16, 185, 129, 0.15);
+        color: var(--accent-emerald);
+    }}
+    .entry-badge.other-status {{
+        background-color: rgba(154, 163, 184, 0.15);
+        color: var(--text-secondary);
+    }}
+
+    /* ---- Record blocks (Flagged Mismatch Detail) ---- */
+    .record-block {{
+        background-color: var(--bg-surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        padding: 16px;
+    }}
+    .record-row {{
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 4px 0;
+        font-size: 13px;
+        gap: 16px;
+    }}
+    .record-key {{
+        font-family: {FONT_BODY};
+        color: var(--text-secondary);
+    }}
+    .record-val {{
+        font-family: {FONT_MONO};
+        font-variant-numeric: tabular-nums;
+        color: var(--text-primary);
+        text-align: right;
+        word-break: break-all;
     }}
     </style>
     """,
@@ -185,14 +363,28 @@ def kpi_card(label: str, value: str, sub: str = "", value_class: str = "") -> st
     """
 
 
-def mode_badge_html(size: str = "0.75rem") -> str:
-    color = DEMO_COLOR if IS_DEMO_MODE else LIVE_COLOR
+def mode_badge_html(size: str = "12px") -> str:
+    color = ACCENT_INDIGO if IS_DEMO_MODE else ACCENT_EMERALD
     label = "Demo data" if IS_DEMO_MODE else "Live"
     return (
-        f'<span style="display:inline-block; background-color:{color}22; color:{color}; '
-        f'border:1px solid {color}66; border-radius:999px; padding:2px 10px; '
-        f'font-size:{size}; font-weight:600; letter-spacing:0.02em;">● {label}</span>'
+        f'<span class="mode-badge" style="background-color:{color}22; color:{color}; '
+        f'border:1px solid {color}66; font-size:{size};">● {label}</span>'
     )
+
+
+def mono(value) -> str:
+    """Wrap a numeric/ID/timestamp value in the tabular-mono span -- the
+    one styling detail that must apply to every number on the page."""
+    return f'<span class="mono-num">{html.escape(str(value))}</span>'
+
+
+def truncate_id(value: str, head: int = 10, tail: int = 4) -> str:
+    if value is None:
+        return "—"
+    value = str(value)
+    if len(value) <= head + tail + 1:
+        return value
+    return f"{value[:head]}…{value[-tail:]}"
 
 
 @st.cache_resource
@@ -237,6 +429,100 @@ def load_reconciliation_report(path: str) -> dict | None:
         return None
     with open(p, encoding="utf-8") as f:
         return json.load(f)
+
+
+def render_ledger_table(df: pd.DataFrame) -> None:
+    """Ledger-style table: alternating-row tint plus a left border accent
+    per row (emerald for credit, rose for debit) so the debit/credit
+    nature of every row is visible at a glance."""
+    header = (
+        "<tr><th>Created</th><th>Transaction</th><th>Account</th><th>Type</th>"
+        '<th style="text-align:right;">Amount</th><th>Currency</th>'
+        "<th>Stripe Event</th><th>Description</th></tr>"
+    )
+    rows = []
+    for i, row in enumerate(df.itertuples(index=False)):
+        is_credit = row.entry_type == "credit"
+        border_color = ACCENT_EMERALD if is_credit else ACCENT_ROSE
+        row_bg = BG_SURFACE if i % 2 == 0 else BG_SURFACE_EVEN_ROW
+        amount_color = ACCENT_EMERALD if is_credit else ACCENT_ROSE
+        sign = "+" if is_credit else "−"
+        created_str = row.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        txn_short = html.escape(truncate_id(row.transaction_id))
+        event_short = html.escape(truncate_id(row.stripe_event_id))
+        badge_class = "credit" if is_credit else "debit"
+        rows.append(
+            f'<tr style="background-color:{row_bg};">'
+            f'<td class="mono" style="border-left:2px solid {border_color};">{mono(created_str)}</td>'
+            f'<td class="mono" title="{html.escape(str(row.transaction_id))}">{mono(txn_short)}</td>'
+            f"<td>{html.escape(str(row.account_id))}</td>"
+            f'<td><span class="entry-badge {badge_class}">{row.entry_type.upper()}</span></td>'
+            f'<td class="amount" style="color:{amount_color};">{mono(f"{sign}${row.amount:,.2f}")}</td>'
+            f'<td class="mono">{mono(str(row.currency).upper())}</td>'
+            f'<td class="mono" title="{html.escape(str(row.stripe_event_id))}">{mono(event_short)}</td>'
+            f"<td>{html.escape(str(row.description or ''))}</td>"
+            "</tr>"
+        )
+    table_html = (
+        '<div class="ledger-table-wrap"><table class="ledger-table">'
+        f"<thead>{header}</thead><tbody>{''.join(rows)}</tbody>"
+        "</table></div>"
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
+
+
+def render_stripe_activity_table(df: pd.DataFrame) -> None:
+    """Same ledger-table visual language, applied to the read-only Live
+    Stripe Activity view: no credit/debit signal here (nothing local to
+    compare against), instead a left-border accent by PaymentIntent
+    status -- emerald for succeeded, neutral otherwise."""
+    header = (
+        "<tr><th>PaymentIntent ID</th><th>Created</th>"
+        '<th style="text-align:right;">Amount</th><th>Currency</th><th>Status</th></tr>'
+    )
+    rows = []
+    for i, row in enumerate(df.itertuples(index=False)):
+        succeeded = row.status == "succeeded"
+        border_color = ACCENT_EMERALD if succeeded else BORDER_SUBTLE
+        row_bg = BG_SURFACE if i % 2 == 0 else BG_SURFACE_EVEN_ROW
+        created_str = row.created.strftime("%Y-%m-%d %H:%M:%S")
+        id_short = html.escape(truncate_id(row.id))
+        badge_class = "succeeded" if succeeded else "other-status"
+        rows.append(
+            f'<tr style="background-color:{row_bg};">'
+            f'<td class="mono" style="border-left:2px solid {border_color};" '
+            f'title="{html.escape(str(row.id))}">{mono(id_short)}</td>'
+            f'<td class="mono">{mono(created_str)}</td>'
+            f'<td class="amount">{mono(f"${row.amount:,.2f}")}</td>'
+            f'<td class="mono">{mono(str(row.currency).upper())}</td>'
+            f'<td><span class="entry-badge {badge_class}">{html.escape(row.status.upper())}</span></td>'
+            "</tr>"
+        )
+    table_html = (
+        '<div class="ledger-table-wrap"><table class="ledger-table">'
+        f"<thead>{header}</thead><tbody>{''.join(rows)}</tbody>"
+        "</table></div>"
+    )
+    st.markdown(table_html, unsafe_allow_html=True)
+
+
+def render_record_block(data: dict, mono_keys: set[str]) -> None:
+    """Styled key/value block used in place of st.json so every numeric
+    or ID value renders in tabular JetBrains Mono, not the browser's
+    default JSON-viewer monospace font."""
+    rows_html = []
+    for key, value in data.items():
+        if value is None:
+            val_html = '<span class="mono-num" style="color:var(--text-secondary);">null</span>'
+        elif key in mono_keys:
+            val_html = mono(value)
+        else:
+            val_html = html.escape(str(value))
+        rows_html.append(
+            f'<div class="record-row"><span class="record-key">{html.escape(key)}</span>'
+            f'<span class="record-val">{val_html}</span></div>'
+        )
+    st.markdown(f'<div class="record-block">{"".join(rows_html)}</div>', unsafe_allow_html=True)
 
 
 def render_live_cloud_fallback() -> None:
@@ -301,12 +587,7 @@ def render_live_cloud_fallback() -> None:
 
     st.write("")
     st.markdown('<div class="section-header">Recent PaymentIntents</div>', unsafe_allow_html=True)
-    st.dataframe(
-        activity_df,
-        use_container_width=True,
-        height=380,
-        hide_index=True,
-    )
+    render_stripe_activity_table(activity_df)
 
 
 def local_ledger_available(db_path: str) -> bool:
@@ -345,18 +626,18 @@ def load_live_stripe_activity(limit: int = 20) -> pd.DataFrame:
 
 
 st.markdown(
-    f'## 💳 Payment Ledger Reconciliation Engine &nbsp; {mode_badge_html()}',
+    f'<div class="page-title">💳 Payment Ledger Reconciliation Engine {mode_badge_html()}</div>',
     unsafe_allow_html=True,
 )
 st.markdown(
-    f'<span style="color:{MUTED};">Double-entry ledger &middot; Stripe test-mode integration '
-    f"&middot; idempotent webhooks &middot; drift reconciliation</span>",
+    '<div class="page-subtitle">Double-entry ledger &middot; Stripe test-mode integration '
+    "&middot; idempotent webhooks &middot; drift reconciliation</div>",
     unsafe_allow_html=True,
 )
 st.write("")
 
 with st.sidebar:
-    st.markdown(mode_badge_html(size="0.8rem"), unsafe_allow_html=True)
+    st.markdown(mode_badge_html(), unsafe_allow_html=True)
     st.markdown('<hr class="sidebar-divider">', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-section-title">🗄️ Data source</div>', unsafe_allow_html=True)
 
@@ -434,11 +715,14 @@ with kpi_cols[0]:
         unsafe_allow_html=True,
     )
 with kpi_cols[1]:
+    match_sub = (
+        f'{mono(matched)}/{mono(total_checked)} PaymentIntents matched' if report else "No report yet"
+    )
     st.markdown(
         kpi_card(
             "Reconciliation Match Rate",
             match_rate,
-            f"{matched}/{total_checked} PaymentIntents matched" if report else "No report yet",
+            match_sub,
             value_class="positive" if report and mismatched == 0 else "",
         ),
         unsafe_allow_html=True,
@@ -473,6 +757,8 @@ with kpi_cols[3]:
 st.write("")
 chart_cols = st.columns([1, 1])
 
+CHART_FONT = dict(family=FONT_MONO, color=TEXT_PRIMARY)
+
 with chart_cols[0]:
     st.markdown(
         '<div class="section-header">Reconciliation: Matched vs Mismatched</div>',
@@ -484,21 +770,22 @@ with chart_cols[0]:
                 go.Bar(
                     x=["Matched", "Mismatched"],
                     y=[matched, mismatched],
-                    marker_color=[POSITIVE, ACCENT],
+                    marker_color=[ACCENT_EMERALD, ACCENT_AMBER],
                     text=[matched, mismatched],
                     textposition="outside",
+                    textfont=CHART_FONT,
                 )
             ]
         )
         fig.update_layout(
-            paper_bgcolor=PANEL,
-            plot_bgcolor=PANEL,
-            font_color=TEXT,
+            paper_bgcolor=BG_SURFACE,
+            plot_bgcolor=BG_SURFACE,
+            font=CHART_FONT,
             margin=dict(l=10, r=10, t=10, b=10),
             height=320,
             showlegend=False,
-            xaxis=dict(gridcolor=PANEL_BORDER),
-            yaxis=dict(gridcolor=PANEL_BORDER, title="PaymentIntents"),
+            xaxis=dict(gridcolor=BORDER_SUBTLE),
+            yaxis=dict(gridcolor=BORDER_SUBTLE, title="PaymentIntents"),
         )
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -522,7 +809,6 @@ with chart_cols[1]:
         by_account["running_balance"] = by_account.groupby("account_id")["signed_amount"].cumsum()
 
         fig2 = go.Figure()
-        palette = [ACCENT, "#58a6ff", POSITIVE, "#a371f7"]
         for i, account_id in enumerate(sorted(by_account["account_id"].unique())):
             sub = by_account[by_account["account_id"] == account_id]
             fig2.add_trace(
@@ -531,18 +817,18 @@ with chart_cols[1]:
                     y=sub["running_balance"],
                     mode="lines+markers",
                     name=account_id,
-                    line=dict(color=palette[i % len(palette)], width=2),
+                    line=dict(color=ACCOUNT_LINE_PALETTE[i % len(ACCOUNT_LINE_PALETTE)], width=2),
                 )
             )
         fig2.update_layout(
-            paper_bgcolor=PANEL,
-            plot_bgcolor=PANEL,
-            font_color=TEXT,
+            paper_bgcolor=BG_SURFACE,
+            plot_bgcolor=BG_SURFACE,
+            font=CHART_FONT,
             margin=dict(l=10, r=10, t=10, b=10),
             height=320,
             legend=dict(orientation="h", y=-0.2),
-            xaxis=dict(gridcolor=PANEL_BORDER),
-            yaxis=dict(gridcolor=PANEL_BORDER, title="Balance ($)"),
+            xaxis=dict(gridcolor=BORDER_SUBTLE),
+            yaxis=dict(gridcolor=BORDER_SUBTLE, title="Balance ($)"),
         )
         st.plotly_chart(fig2, use_container_width=True)
     else:
@@ -577,12 +863,7 @@ if not entries_df.empty:
         "created_at", "transaction_id", "account_id", "entry_type",
         "amount", "currency", "stripe_event_id", "description",
     ]
-    st.dataframe(
-        filtered[display_cols].sort_values("created_at", ascending=False),
-        use_container_width=True,
-        height=320,
-        hide_index=True,
-    )
+    render_ledger_table(filtered[display_cols].sort_values("created_at", ascending=False))
 else:
     st.info("No ledger entries in this database yet.")
 
@@ -603,20 +884,22 @@ if report and report["mismatches"]:
     detail_cols = st.columns(2)
     with detail_cols[0]:
         st.markdown("**Stripe record**")
-        st.json(
+        render_record_block(
             {
                 "payment_intent_id": mismatch["payment_intent_id"],
                 "amount_cents": mismatch["stripe_amount"],
                 "status": mismatch["stripe_status"],
-            }
+            },
+            mono_keys={"payment_intent_id", "amount_cents"},
         )
     with detail_cols[1]:
         st.markdown("**Local ledger record**")
-        st.json(
+        render_record_block(
             {
                 "payment_intent_id": mismatch["payment_intent_id"],
                 "amount_cents": mismatch["local_amount"],
-            }
+            },
+            mono_keys={"payment_intent_id", "amount_cents"},
         )
     st.warning(mismatch["detail"])
 elif report:
