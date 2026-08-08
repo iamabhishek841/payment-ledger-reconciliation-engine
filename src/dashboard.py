@@ -31,12 +31,23 @@ from __future__ import annotations
 import html
 import json
 import os
+import sys
 from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
+
+# Streamlit Cloud runs `streamlit run src/dashboard.py` without the repo
+# root on sys.path (only this file's own directory, src/, ends up there
+# automatically), so `from src...` imports below raise ModuleNotFoundError
+# there even though they work locally -- locally this only ever worked
+# because PYTHONPATH was set explicitly before launching streamlit. Adding
+# the repo root here makes the app self-sufficient in both environments.
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 load_dotenv()
 
