@@ -1,0 +1,16 @@
+.env
+*.db
+*.sqlite3
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+.DS_Store
+reconciliation_report.json
