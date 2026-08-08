@@ -7,9 +7,9 @@ so tests can monkeypatch a single seam.
 
 from __future__ import annotations
 
-import os
-
 import stripe
+
+from src.secrets_helper import get_secret
 
 
 class StripeNotConfiguredError(RuntimeError):
@@ -17,10 +17,11 @@ class StripeNotConfiguredError(RuntimeError):
 
 
 def _get_secret_key() -> str:
-    key = os.environ.get("STRIPE_SECRET_KEY")
+    key = get_secret("STRIPE_SECRET_KEY")
     if not key:
         raise StripeNotConfiguredError(
-            "STRIPE_SECRET_KEY is not set; copy .env.example to .env and fill it in"
+            "STRIPE_SECRET_KEY is not set; copy .env.example to .env and fill it in, "
+            "or configure it in Streamlit Cloud's Settings -> Secrets"
         )
     return key
 
