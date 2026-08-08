@@ -5,7 +5,11 @@ from __future__ import annotations
 import os
 import sqlite3
 
+from dotenv import load_dotenv
+
 from src.ledger.models import connect, init_schema
+
+load_dotenv()
 
 _connection: sqlite3.Connection | None = None
 
