@@ -381,6 +381,19 @@ st.markdown(
         text-align: right;
         word-break: break-all;
     }}
+    .copy-btn {{
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--text-secondary);
+        font-size: 13px;
+        line-height: 1;
+        padding: 0 0 0 6px;
+        vertical-align: middle;
+    }}
+    .copy-btn:hover {{
+        color: var(--accent-primary);
+    }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -549,14 +562,32 @@ def render_stripe_activity_table(df: pd.DataFrame) -> None:
     st.markdown(table_html, unsafe_allow_html=True)
 
 
-def render_record_block(data: dict, mono_keys: set[str]) -> None:
+def render_record_block(data: dict, mono_keys: set[str], id_keys: set[str] = frozenset()) -> None:
     """Styled key/value block used in place of st.json so every numeric
     or ID value renders in tabular JetBrains Mono, not the browser's
-    default JSON-viewer monospace font."""
+    default JSON-viewer monospace font.
+
+    `id_keys` values are truncated (full value on hover + a copy button)
+    instead of dumped inline -- long Stripe IDs otherwise blow out the
+    card width. Missing values render as an explicit "— (missing)"
+    rather than being silently omitted, so paired Stripe/local record
+    blocks always show the same fields in the same order and stay the
+    same height even when one side has no data for a field.
+    """
     rows_html = []
     for key, value in data.items():
         if value is None:
-            val_html = '<span class="mono-num" style="color:var(--text-secondary);">null</span>'
+            val_html = '<span class="mono-num" style="color:var(--text-secondary);">— (missing)</span>'
+        elif key in id_keys:
+            full = str(value)
+            short = html.escape(truncate_id(full, head=10, tail=6))
+            escaped_full = html.escape(full)
+            val_html = (
+                f'<span class="mono-num" title="{escaped_full}">{short}</span>'
+                f'<button type="button" class="copy-btn" title="Copy full ID: {escaped_full}" '
+                f"onclick=\"navigator.clipboard.writeText('{escaped_full}'); "
+                f"this.textContent='✓'; setTimeout(() => this.textContent='⧉', 1200);\">⧉</button>"
+            )
         elif key in mono_keys:
             val_html = mono(value)
         else:
@@ -915,7 +946,8 @@ st.markdown('<div class="section-header">Flagged Mismatch Detail</div>', unsafe_
 
 if report and report["mismatches"]:
     labels = [
-        f"{m['payment_intent_id']} — {m['mismatch_type']}" for m in report["mismatches"]
+        f"{truncate_id(m['payment_intent_id'], head=10, tail=6)} — {m['mismatch_type']}"
+        for m in report["mismatches"]
     ]
     selected = st.selectbox("Select a flagged mismatch to inspect", options=labels)
     idx = labels.index(selected)
@@ -925,6 +957,8 @@ if report and report["mismatches"]:
     st.markdown(f'<span class="mismatch-pill">{pill_label}</span>', unsafe_allow_html=True)
     st.write("")
     detail_cols = st.columns(2)
+    id_keys = {"payment_intent_id"}
+    mono_keys = {"payment_intent_id", "amount_cents"}
     with detail_cols[0]:
         st.markdown("**Stripe record**")
         render_record_block(
@@ -933,7 +967,8 @@ if report and report["mismatches"]:
                 "amount_cents": mismatch["stripe_amount"],
                 "status": mismatch["stripe_status"],
             },
-            mono_keys={"payment_intent_id", "amount_cents"},
+            mono_keys=mono_keys,
+            id_keys=id_keys,
         )
     with detail_cols[1]:
         st.markdown("**Local ledger record**")
@@ -941,8 +976,15 @@ if report and report["mismatches"]:
             {
                 "payment_intent_id": mismatch["payment_intent_id"],
                 "amount_cents": mismatch["local_amount"],
+                # The reconciliation report never tracks a "local status" --
+                # only Stripe's PaymentIntent has a status field. Included
+                # explicitly (as missing) so both cards show the same three
+                # fields in the same order and match in height, rather than
+                # silently having one fewer row than the Stripe record.
+                "status": None,
             },
             mono_keys={"payment_intent_id", "amount_cents"},
+            id_keys=id_keys,
         )
     st.warning(mismatch["detail"])
 elif report:
