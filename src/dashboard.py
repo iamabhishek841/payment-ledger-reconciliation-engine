@@ -1,11 +1,19 @@
 """Streamlit dashboard for the payment ledger reconciliation engine.
 
-Reads ledger state directly from the SQLite database and, if a
-reconciliation report JSON file exists (written by `reconciliation.py`
-via the CLI or the `/reconciliation-report` API endpoint), renders its
-matched/mismatched breakdown. Designed to look like an internal fintech
-tool rather than a default Streamlit app: dark palette, card-style KPIs,
-Plotly charts, and a proper multi-column grid.
+Supports two modes via the DASHBOARD_MODE environment variable:
+
+  - "demo" (default): reads a static, pre-generated JSON snapshot from
+    demo_data/. Makes zero live Stripe API calls and needs no secret key
+    at all -- safe to deploy publicly (e.g. on Streamlit Cloud) without
+    any credentials configured.
+  - "live": reads the real local SQLite ledger and the live
+    reconciliation report, exactly as before. Any Stripe key this mode
+    needs is resolved via src.secrets_helper.get_secret (local .env
+    first, then Streamlit Cloud's st.secrets).
+
+Designed to look like an internal fintech tool rather than a default
+Streamlit app: dark palette, card-style KPIs, Plotly charts, and a
+proper multi-column grid.
 """
 
 from __future__ import annotations
@@ -23,9 +31,16 @@ load_dotenv()
 
 from src.ledger.models import connect, init_schema  # noqa: E402
 from src.ledger.service import get_balance, list_entries  # noqa: E402
+from src.secrets_helper import get_secret  # noqa: E402
+
+DASHBOARD_MODE = os.environ.get("DASHBOARD_MODE", "demo").strip().lower()
+IS_DEMO_MODE = DASHBOARD_MODE != "live"
 
 DB_PATH = os.environ.get("LEDGER_DB_PATH", "ledger.db")
 REPORT_PATH = os.environ.get("RECONCILIATION_REPORT_PATH", "reconciliation_report.json")
+
+DEMO_LEDGER_PATH = os.environ.get("DEMO_LEDGER_PATH", "demo_data/sample_ledger.json")
+DEMO_REPORT_PATH = os.environ.get("DEMO_REPORT_PATH", "demo_data/sample_reconciliation.json")
 
 ACCENT = "#f0b429"  # amber -- the single accent color for alerts/mismatches
 BG = "#0b0f14"
@@ -35,6 +50,8 @@ TEXT = "#e6edf3"
 MUTED = "#8b96a5"
 POSITIVE = "#3fb950"
 NEGATIVE = "#f85149"
+LIVE_COLOR = "#3fb950"
+DEMO_COLOR = "#58a6ff"
 
 st.set_page_config(
     page_title="Payment Ledger Reconciliation Engine",
@@ -124,6 +141,16 @@ def kpi_card(label: str, value: str, sub: str = "", value_class: str = "") -> st
     """
 
 
+def mode_badge_html(size: str = "0.75rem") -> str:
+    color = DEMO_COLOR if IS_DEMO_MODE else LIVE_COLOR
+    label = "Demo data" if IS_DEMO_MODE else "Live"
+    return (
+        f'<span style="display:inline-block; background-color:{color}22; color:{color}; '
+        f'border:1px solid {color}66; border-radius:999px; padding:2px 10px; '
+        f'font-size:{size}; font-weight:600; letter-spacing:0.02em;">● {label}</span>'
+    )
+
+
 @st.cache_resource
 def get_connection(db_path: str):
     conn = connect(db_path)
@@ -131,9 +158,7 @@ def get_connection(db_path: str):
     return conn
 
 
-def load_entries_df(db_path: str) -> pd.DataFrame:
-    conn = get_connection(db_path)
-    rows = list_entries(conn, limit=5000)
+def _entries_to_df(rows: list[dict]) -> pd.DataFrame:
     if not rows:
         return pd.DataFrame(
             columns=[
@@ -141,10 +166,25 @@ def load_entries_df(db_path: str) -> pd.DataFrame:
                 "amount_cents", "currency", "stripe_event_id", "description", "created_at",
             ]
         )
-    df = pd.DataFrame([dict(r) for r in rows])
+    df = pd.DataFrame(rows)
     df["created_at"] = pd.to_datetime(df["created_at"])
     df["amount"] = df["amount_cents"] / 100.0
     return df.sort_values("created_at")
+
+
+def load_entries_df_live(db_path: str) -> pd.DataFrame:
+    conn = get_connection(db_path)
+    rows = list_entries(conn, limit=5000)
+    return _entries_to_df([dict(r) for r in rows])
+
+
+def load_entries_df_demo(path: str) -> pd.DataFrame:
+    p = Path(path)
+    if not p.exists():
+        return _entries_to_df([])
+    with open(p, encoding="utf-8") as f:
+        rows = json.load(f)
+    return _entries_to_df(rows)
 
 
 def load_reconciliation_report(path: str) -> dict | None:
@@ -155,7 +195,10 @@ def load_reconciliation_report(path: str) -> dict | None:
         return json.load(f)
 
 
-st.markdown("## 💳 Payment Ledger Reconciliation Engine")
+st.markdown(
+    f'## 💳 Payment Ledger Reconciliation Engine &nbsp; {mode_badge_html()}',
+    unsafe_allow_html=True,
+)
 st.markdown(
     f'<span style="color:{MUTED};">Double-entry ledger &middot; Stripe test-mode integration '
     f"&middot; idempotent webhooks &middot; drift reconciliation</span>",
@@ -165,12 +208,31 @@ st.write("")
 
 with st.sidebar:
     st.markdown("### Data source")
-    db_path_input = st.text_input("Ledger DB path", value=DB_PATH)
-    report_path_input = st.text_input("Reconciliation report path", value=REPORT_PATH)
-    st.caption(
-        "The dashboard reads the ledger directly from SQLite and, if present, "
-        "the last reconciliation report JSON written by `reconciliation.py`."
-    )
+
+    if IS_DEMO_MODE:
+        st.caption(
+            "Reading a static snapshot exported from a real local Stripe "
+            "test-mode run. No database connection, no Stripe API calls."
+        )
+        demo_ledger_input = st.text_input("Demo ledger snapshot", value=DEMO_LEDGER_PATH)
+        demo_report_input = st.text_input("Demo reconciliation snapshot", value=DEMO_REPORT_PATH)
+        db_path_input = None
+        report_path_input = None
+        st.caption("Set `DASHBOARD_MODE=live` to connect to a real ledger instead.")
+    else:
+        db_path_input = st.text_input("Ledger DB path", value=DB_PATH)
+        report_path_input = st.text_input("Reconciliation report path", value=REPORT_PATH)
+        demo_ledger_input = None
+        demo_report_input = None
+        st.caption(
+            "Reading the ledger directly from SQLite and, if present, "
+            "the last reconciliation report JSON written by `reconciliation.py`."
+        )
+        if get_secret("STRIPE_SECRET_KEY"):
+            st.caption("✅ STRIPE_SECRET_KEY resolved")
+        else:
+            st.caption("⚠️ STRIPE_SECRET_KEY not configured — reconciliation refresh will fail")
+
     st.markdown("---")
     st.markdown("### About")
     st.caption(
@@ -179,8 +241,12 @@ with st.sidebar:
         "from summed entries, never cached."
     )
 
-entries_df = load_entries_df(db_path_input)
-report = load_reconciliation_report(report_path_input)
+if IS_DEMO_MODE:
+    entries_df = load_entries_df_demo(demo_ledger_input)
+    report = load_reconciliation_report(demo_report_input)
+else:
+    entries_df = load_entries_df_live(db_path_input)
+    report = load_reconciliation_report(report_path_input)
 
 total_transactions = entries_df["transaction_id"].nunique() if not entries_df.empty else 0
 matched = report["matched_count"] if report else 0
@@ -215,8 +281,17 @@ with kpi_cols[2]:
         unsafe_allow_html=True,
     )
 with kpi_cols[3]:
-    conn = get_connection(db_path_input)
-    revenue_balance = get_balance(conn, "revenue") / 100.0 if not entries_df.empty else 0.0
+    if IS_DEMO_MODE:
+        revenue_balance = (
+            entries_df[entries_df["account_id"] == "revenue"]
+            .apply(lambda r: r["amount"] if r["entry_type"] == "credit" else -r["amount"], axis=1)
+            .sum()
+            if not entries_df.empty
+            else 0.0
+        )
+    else:
+        conn = get_connection(db_path_input)
+        revenue_balance = get_balance(conn, "revenue") / 100.0 if not entries_df.empty else 0.0
     st.markdown(
         kpi_card("Revenue Balance", f"${revenue_balance:,.2f}", "Live SUM over ledger entries"),
         unsafe_allow_html=True,
