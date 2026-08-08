@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check src tests
+
+      # STRIPE_SECRET_KEY is intentionally not configured as a CI secret:
+      # this project runs entirely on Stripe *test-mode* keys, and even a
+      # test-mode key is a credential we don't want sitting in repo/org
+      # secrets for a portfolio project. The live-Stripe integration test in
+      # tests/test_stripe_integration.py already skips itself (via
+      # pytest.mark.skipif) whenever STRIPE_SECRET_KEY is unset, so `pytest`
+      # here automatically runs only the unit/DB/signature-verification
+      # tests and reports the integration test as skipped rather than
+      # failed.
+      - name: Run tests (Stripe-dependent integration test skips automatically)
+        run: pytest -q
