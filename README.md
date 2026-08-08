@@ -118,9 +118,66 @@ stripe trigger payment_intent.succeeded
 
 ### Running the dashboard
 
+The dashboard has two modes, controlled by the `DASHBOARD_MODE` environment
+variable:
+
+| Mode | Default? | Data source | Needs a Stripe key? |
+|------|----------|-------------|----------------------|
+| `demo` | yes (used when `DASHBOARD_MODE` is unset) | static JSON snapshot in `demo_data/` | no — zero live Stripe API calls |
+| `live` | no | the real local SQLite ledger + `reconciliation_report.json` | only if you use the reconciliation refresh; resolved via `src/secrets_helper.py` |
+
 ```bash
+# Demo mode (default) -- safe to run/deploy with no secrets at all
 streamlit run src/dashboard.py
+
+# Live mode -- reads your real local ledger.db and reconciliation_report.json
+DASHBOARD_MODE=live streamlit run src/dashboard.py
 ```
+
+A small badge next to the title (and at the top of the sidebar) always shows
+which mode is active — "● Demo data" or "● Live" — so it's never ambiguous.
+
+#### Regenerating the demo snapshot
+
+`demo_data/sample_ledger.json` and `demo_data/sample_reconciliation.json`
+are a real export from an actual local run (real Stripe test-mode
+PaymentIntent/event IDs from `stripe trigger`, not fabricated numbers). To
+regenerate them after producing fresh local activity (see "Forwarding
+Stripe webhooks locally" above):
+
+```bash
+python -c "
+from dotenv import load_dotenv; load_dotenv()
+import json
+from src.ledger.models import connect
+from src.ledger.service import list_entries
+from src.reconciliation import reconcile
+
+conn = connect('ledger.db')
+with open('demo_data/sample_ledger.json', 'w', encoding='utf-8') as f:
+    json.dump([dict(r) for r in list_entries(conn, limit=5000)], f, indent=2)
+
+report = reconcile(conn, limit=10)
+with open('demo_data/sample_reconciliation.json', 'w', encoding='utf-8') as f:
+    json.dump(report.to_dict(), f, indent=2)
+"
+```
+
+#### Deploying live mode on Streamlit Cloud
+
+Local `.env` values aren't available on Streamlit Cloud. For a `live`-mode
+deployment, configure the Stripe key through the app's **Settings → Secrets**
+panel instead, using TOML:
+
+```toml
+STRIPE_SECRET_KEY = "sk_test_your_real_test_mode_key"
+```
+
+`src/secrets_helper.get_secret()` checks `os.environ` first (so local `.env`
+always wins during development) and falls back to `st.secrets` automatically
+— no code changes needed between environments. Never commit a
+`.streamlit/secrets.toml` file with a real key in it; Streamlit Cloud's
+Secrets panel is the encrypted store this is designed for.
 
 ### Running reconciliation
 
