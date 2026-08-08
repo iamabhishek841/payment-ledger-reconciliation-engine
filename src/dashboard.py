@@ -45,9 +45,12 @@ DEMO_REPORT_PATH = os.environ.get("DEMO_REPORT_PATH", "demo_data/sample_reconcil
 ACCENT = "#f0b429"  # amber -- the single accent color for alerts/mismatches
 BG = "#0b0f14"
 PANEL = "#131922"
+SIDEBAR_BG = "#0d1420"  # distinct tone from BG/PANEL so the sidebar reads as its own surface
+SIDEBAR_BORDER = "#232e3f"
 PANEL_BORDER = "#1f2733"
 TEXT = "#e6edf3"
-MUTED = "#8b96a5"
+MUTED = "#9aa5b3"  # lightened from the original #8b96a5 for better readability on dark backgrounds
+SIDEBAR_TEXT = "#c3cbd6"
 POSITIVE = "#3fb950"
 NEGATIVE = "#f85149"
 LIVE_COLOR = "#3fb950"
@@ -68,8 +71,42 @@ st.markdown(
         color: {TEXT};
     }}
     section[data-testid="stSidebar"] {{
-        background-color: {PANEL};
-        border-right: 1px solid {PANEL_BORDER};
+        background-color: {SIDEBAR_BG};
+        border-right: 1px solid {SIDEBAR_BORDER};
+    }}
+    section[data-testid="stSidebar"] > div {{
+        padding-top: 1.5rem;
+    }}
+    section[data-testid="stSidebar"] h3 {{
+        font-size: 0.95rem;
+        color: {TEXT};
+        margin-bottom: 2px;
+    }}
+    section[data-testid="stSidebar"] .stCaption, section[data-testid="stSidebar"] small {{
+        color: {SIDEBAR_TEXT} !important;
+    }}
+    section[data-testid="stSidebar"] label {{
+        color: {SIDEBAR_TEXT} !important;
+        font-size: 0.82rem;
+    }}
+    section[data-testid="stSidebar"] input {{
+        background-color: {PANEL} !important;
+        border: 1px solid {SIDEBAR_BORDER} !important;
+        color: {TEXT} !important;
+    }}
+    .sidebar-divider {{
+        border: none;
+        border-top: 1px solid {SIDEBAR_BORDER};
+        margin: 20px 0;
+    }}
+    .sidebar-section-title {{
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: {TEXT};
+        margin: 4px 0 10px 0;
     }}
     h1, h2, h3, h4 {{
         font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -207,7 +244,9 @@ st.markdown(
 st.write("")
 
 with st.sidebar:
-    st.markdown("### Data source")
+    st.markdown(mode_badge_html(size="0.8rem"), unsafe_allow_html=True)
+    st.markdown('<hr class="sidebar-divider">', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section-title">🗄️ Data source</div>', unsafe_allow_html=True)
 
     if IS_DEMO_MODE:
         st.caption(
@@ -233,8 +272,8 @@ with st.sidebar:
         else:
             st.caption("⚠️ STRIPE_SECRET_KEY not configured — reconciliation refresh will fail")
 
-    st.markdown("---")
-    st.markdown("### About")
+    st.markdown('<hr class="sidebar-divider">', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section-title">ℹ️ About</div>', unsafe_allow_html=True)
     st.caption(
         "Every posted transaction is a balanced debit/credit pair enforced at "
         "the database-transaction level. Balances are always computed live "
