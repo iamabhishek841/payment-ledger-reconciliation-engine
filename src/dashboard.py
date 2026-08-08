@@ -7,7 +7,13 @@ Supports two modes via the DASHBOARD_MODE environment variable:
     at all -- safe to deploy publicly (e.g. on Streamlit Cloud) without
     any credentials configured.
   - "live": reads the real local SQLite ledger and the live
-    reconciliation report, exactly as before. Any Stripe key this mode
+    reconciliation report, when that ledger DB file actually exists on
+    disk. Streamlit Cloud has no persistent filesystem and can't run the
+    local FastAPI webhook receiver, so the local ledger will never exist
+    there -- in that case this mode automatically falls back to a
+    read-only "Live Stripe Activity" view that lists real PaymentIntents
+    straight from the Stripe API, with no local-vs-Stripe comparison
+    (there's nothing local to compare against). Any Stripe key this mode
     needs is resolved via src.secrets_helper.get_secret (local .env
     first, then Streamlit Cloud's st.secrets).
 
@@ -32,6 +38,7 @@ load_dotenv()
 from src.ledger.models import connect, init_schema  # noqa: E402
 from src.ledger.service import get_balance, list_entries  # noqa: E402
 from src.secrets_helper import get_secret  # noqa: E402
+from src.stripe_client import StripeNotConfiguredError, list_recent_payment_intents  # noqa: E402
 
 DASHBOARD_MODE = os.environ.get("DASHBOARD_MODE", "demo").strip().lower()
 IS_DEMO_MODE = DASHBOARD_MODE != "live"
@@ -232,6 +239,111 @@ def load_reconciliation_report(path: str) -> dict | None:
         return json.load(f)
 
 
+def render_live_cloud_fallback() -> None:
+    """Render the read-only Live Stripe Activity view.
+
+    Used when DASHBOARD_MODE=live but no local ledger DB exists (the
+    Streamlit Cloud scenario). Talks to the Stripe API directly and
+    intentionally does NOT show a matched-vs-mismatched comparison,
+    running-balance chart, or ledger entries table -- there is no local
+    ledger to compare against or derive those from.
+    """
+    st.markdown(
+        '<div class="section-header">📡 Live Stripe Activity (read-only)</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "No local ledger DB found, so this shows real PaymentIntents pulled "
+        "directly from the Stripe API instead of a Stripe-vs-ledger "
+        "reconciliation. Run this app locally with a populated ledger.db "
+        "(see README) to see the full reconciliation view."
+    )
+
+    if not get_secret("STRIPE_SECRET_KEY"):
+        st.error(
+            "STRIPE_SECRET_KEY is not configured. Set it in your local .env, or in "
+            "Streamlit Cloud's Settings -> Secrets, to load live Stripe activity."
+        )
+        return
+
+    try:
+        activity_df = load_live_stripe_activity(limit=20)
+    except StripeNotConfiguredError as exc:
+        st.error(str(exc))
+        return
+    except Exception as exc:  # Stripe API/network errors surface here
+        st.error(f"Failed to load live Stripe activity: {exc}")
+        return
+
+    if activity_df.empty:
+        st.info("No PaymentIntents found in this Stripe test-mode account yet.")
+        return
+
+    succeeded_count = int((activity_df["status"] == "succeeded").sum())
+    total_amount = float(activity_df.loc[activity_df["status"] == "succeeded", "amount"].sum())
+
+    kpi_cols = st.columns(3)
+    with kpi_cols[0]:
+        st.markdown(
+            kpi_card("PaymentIntents Fetched", f"{len(activity_df):,}", "Most recent, via Stripe API"),
+            unsafe_allow_html=True,
+        )
+    with kpi_cols[1]:
+        st.markdown(
+            kpi_card("Succeeded", f"{succeeded_count:,}", "Status == succeeded"),
+            unsafe_allow_html=True,
+        )
+    with kpi_cols[2]:
+        st.markdown(
+            kpi_card("Succeeded Amount", f"${total_amount:,.2f}", "Sum across succeeded PaymentIntents"),
+            unsafe_allow_html=True,
+        )
+
+    st.write("")
+    st.markdown('<div class="section-header">Recent PaymentIntents</div>', unsafe_allow_html=True)
+    st.dataframe(
+        activity_df,
+        use_container_width=True,
+        height=380,
+        hide_index=True,
+    )
+
+
+def local_ledger_available(db_path: str) -> bool:
+    """True if a real local ledger DB file exists at this path.
+
+    False on Streamlit Cloud (no persistent filesystem, no local webhook
+    receiver ever wrote one), which is exactly the signal live mode uses
+    to fall back to the read-only Live Stripe Activity view.
+    """
+    return Path(db_path).exists()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def load_live_stripe_activity(limit: int = 20) -> pd.DataFrame:
+    """Fetch recent PaymentIntents directly from the Stripe API.
+
+    Used only by the cloud fallback view -- there is no local ledger to
+    read here, so this talks to Stripe directly instead of going through
+    reconciliation.py (which compares Stripe against a local ledger that
+    doesn't exist in this scenario).
+    """
+    intents = list_recent_payment_intents(limit=limit)
+    rows = [
+        {
+            "id": pi["id"],
+            "amount": pi["amount"] / 100.0,
+            "currency": pi.get("currency", "usd"),
+            "status": pi["status"],
+            "created": pd.to_datetime(pi["created"], unit="s"),
+        }
+        for pi in intents
+    ]
+    columns = ["id", "amount", "currency", "status", "created"]
+    df = pd.DataFrame(rows, columns=columns)
+    return df.sort_values("created", ascending=False)
+
+
 st.markdown(
     f'## 💳 Payment Ledger Reconciliation Engine &nbsp; {mode_badge_html()}',
     unsafe_allow_html=True,
@@ -257,20 +369,32 @@ with st.sidebar:
         demo_report_input = st.text_input("Demo reconciliation snapshot", value=DEMO_REPORT_PATH)
         db_path_input = None
         report_path_input = None
+        local_db_found = None  # not applicable in demo mode
         st.caption("Set `DASHBOARD_MODE=live` to connect to a real ledger instead.")
     else:
         db_path_input = st.text_input("Ledger DB path", value=DB_PATH)
         report_path_input = st.text_input("Reconciliation report path", value=REPORT_PATH)
         demo_ledger_input = None
         demo_report_input = None
-        st.caption(
-            "Reading the ledger directly from SQLite and, if present, "
-            "the last reconciliation report JSON written by `reconciliation.py`."
-        )
+
+        local_db_found = local_ledger_available(db_path_input)
+        if local_db_found:
+            st.caption(
+                "Reading the ledger directly from SQLite and, if present, "
+                "the last reconciliation report JSON written by `reconciliation.py`."
+            )
+        else:
+            st.caption(
+                "⚠️ No local ledger DB found at this path (expected on Streamlit "
+                "Cloud, which has no persistent filesystem and can't run the local "
+                "webhook receiver). Falling back to a read-only **Live Stripe "
+                "Activity** view below."
+            )
+
         if get_secret("STRIPE_SECRET_KEY"):
             st.caption("✅ STRIPE_SECRET_KEY resolved")
         else:
-            st.caption("⚠️ STRIPE_SECRET_KEY not configured — reconciliation refresh will fail")
+            st.caption("⚠️ STRIPE_SECRET_KEY not configured — live data will fail to load")
 
     st.markdown('<hr class="sidebar-divider">', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-section-title">ℹ️ About</div>', unsafe_allow_html=True)
@@ -281,11 +405,21 @@ with st.sidebar:
     )
 
 if IS_DEMO_MODE:
+    view_mode = "demo"
     entries_df = load_entries_df_demo(demo_ledger_input)
     report = load_reconciliation_report(demo_report_input)
-else:
+elif local_db_found:
+    view_mode = "live_local"
     entries_df = load_entries_df_live(db_path_input)
     report = load_reconciliation_report(report_path_input)
+else:
+    view_mode = "live_cloud_fallback"
+    entries_df = None
+    report = None
+
+if view_mode == "live_cloud_fallback":
+    render_live_cloud_fallback()
+    st.stop()
 
 total_transactions = entries_df["transaction_id"].nunique() if not entries_df.empty else 0
 matched = report["matched_count"] if report else 0
